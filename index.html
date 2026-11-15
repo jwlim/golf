@@ -38,6 +38,7 @@ h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
 .muted { color: var(--muted); font-size: 14px; }
+#err { margin: 16px; padding: 14px; border: 1px solid var(--warn); border-radius: 12px; color: var(--warn); background: var(--surface); font-size: 14px; white-space: pre-wrap; word-break: break-all; }
 .note { border-color: var(--warn); color: var(--warn); font-size: 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 
 button, input { font: inherit; color: inherit; }
@@ -116,10 +117,24 @@ input { background: var(--surface); border: 1px solid var(--line); border-radius
 </style>
 </head>
 <body>
+<div id="err" hidden></div>
+<noscript><p style="padding:16px">이 페이지는 JavaScript가 켜져 있어야 동작합니다.</p></noscript>
+<script>
+// 아래 본문 스크립트가 문법 오류로 아예 실행되지 못해도 이 블록은 따로 돌아서 오류를 화면에 보여줍니다.
+function showError(msg, line) {
+  var el = document.getElementById('err');
+  var hint = /Unexpected|Invalid or unexpected|missing|SyntaxError/i.test(msg)
+    ? ' index.html에서 고친 줄(특히 const API_URL = \'…\'; 의 따옴표와 세미콜론)을 확인해 주세요.' : '';
+  el.textContent = '오류가 나서 화면을 표시하지 못했습니다: ' + msg + (line ? ' (' + line + '번째 줄)' : '') + hint;
+  el.hidden = false;
+}
+window.addEventListener('error', function (e) { showError(e.message, e.lineno); });
+window.addEventListener('unhandledrejection', function (e) { showError(String(e.reason && e.reason.message || e.reason)); });
+</script>
 <main id="app"></main>
 <script>
 // Apps Script 웹 앱 URL(…/exec). 비워 두면 기록이 이 기기에만 저장됩니다.
-const API_URL = 'https://script.google.com/macros/s/AKfycbzMeGbFd8zjAi7tQ96fkEeoD38oaJkf-IYpM3ndccdB02MWAQg-dDne5X213n4Kdg33YQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbys9LBp_YuEDzpujONvqgbS7bYybHGuZo040fyhI9fyFF-EMien5wzFwi_l1c3whyPxWw/exec';
 
 const app = document.getElementById('app');
 const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
@@ -149,6 +164,19 @@ function coursePars(club, course) {
   const c = db.courses.find(x => x.club === club && x.course === course);
   return c ? c.pars : null;
 }
+// 시트 웹 앱 호출. 실패 원인을 구분해서 알려줍니다.
+async function call(opts) {
+  let r;
+  try { r = await fetch(API_URL, opts); }
+  catch (e) { throw new Error('시트 웹 앱에 연결하지 못했습니다. 인터넷 연결과 index.html의 API_URL(…/exec로 끝나는 주소)을 확인해 주세요.'); }
+  const t = await r.text();
+  let d;
+  try { d = JSON.parse(t); }
+  catch (e) { throw new Error('시트 웹 앱이 데이터 대신 다른 페이지를 돌려줬습니다(HTTP ' + r.status + '). Apps Script 배포의 액세스 권한이 "모든 사용자"인지, API_URL이 최신 배포 주소인지 확인해 주세요.'); }
+  if (d.error && d.error !== 'key') throw new Error('시트 스크립트 오류: ' + d.error);
+  return d;
+}
+const KEY_MSG = '비밀키가 맞지 않습니다. 다시 보내기를 눌러 입력해 주세요.';
 async function flush() {
   if (!API_URL || !pending.length) return;
   let key = localStorage.getItem('golf.key');
@@ -158,8 +186,8 @@ async function flush() {
     localStorage.setItem('golf.key', key);
   }
   while (pending.length) {
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ key }, pending[0])) }).then(r => r.json());
-    if (!res.ok) { if (res.error === 'key') localStorage.removeItem('golf.key'); throw new Error(res.error); }
+    const res = await call({ method: 'POST', body: JSON.stringify(Object.assign({ key }, pending[0])) });
+    if (!res.ok) { localStorage.removeItem('golf.key'); throw new Error('key'); }
     pending.shift();
     store('golf.pending', pending);
   }
@@ -168,12 +196,11 @@ async function sync() {
   if (!API_URL) return;
   try {
     await flush();
-    db = norm(await fetch(API_URL).then(r => r.json()));
+    db = norm(await call());
     store('golf.db', db);
     notice = '';
   } catch (e) {
-    notice = e.message === 'key' ? '비밀키가 맞지 않습니다. 다시 보내기를 눌러 입력해 주세요.' : '시트와 연결하지 못했습니
-다. 이 기기에 저장된 기록을 보여줍니다.';
+    notice = e.message === 'key' ? KEY_MSG : e.message + ' 지금은 이 기기에 저장된 기록을 보여줍니다.';
   }
   if (view === 'home' || view === 'detail') render();
 }
@@ -230,7 +257,7 @@ function homeView() {
   const full = rs.filter(r => r.s.n === 18);
   let h = `<div class="top"><h1>골프 기록</h1>
     <button class="primary" data-act="${cur ? 'resume' : 'new'}">${cur ? (cur.edit ? '수정 이어하기' : '라운드 이어하기') : '새 라운드'}</button></div>`;
-  if (notice || pending.length) h += `<div class="card note"><span>${notice || `시트로 보내지 못한 라운드가 ${pending.length}건 있습니다.`}</span><button data-act="sync">다시 보내기</button></div>`;
+  if (notice || pending.length) h += `<div class="card note"><span>${esc(notice) || `시트로 보내지 못한 라운드가 ${pending.length}건 있습니다.`}</span><button data-act="sync">다시 보내기</button></div>`;
   if (!API_URL) h += `<p class="muted">시트가 연결되지 않아 기록이 이 기기에만 저장됩니다.</p>`;
   if (!rs.length) return h + `<div class="card muted">아직 기록이 없습니다. 새 라운드를 눌러 첫 라운드를 입력하세요.</div>`;
   h += `<div class="seg tabs"><button data-act="tab" data-v="rounds" class="${tab === 'rounds' ? 'on' : ''}">라운드</button><button data-act="tab" data-v="stats" class="${tab === 'stats' ? 'on' : ''}">통계</button></div>`;
@@ -241,8 +268,7 @@ function homeView() {
     </button>`).join('') + `</div></section>`;
 
   if (full.length) {
-    h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>스코어</th><th>퍼트</th><th>페어
-웨이</th><th>GIR</th></tr></thead><tbody>`;
+    h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>스코어</th><th>퍼트</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`;
     if (full.length > 5) h += avgRow('최근 5', full.slice(0, 5));
     if (full.length > 10) h += avgRow('최근 10', full.slice(0, 10));
     h += avgRow(`전체 ${full.length}`, full) + `</tbody></table></section>`;
@@ -416,7 +442,7 @@ function finish() {
   store('golf.db', db);
   if (API_URL) { pending = pending.filter(x => x.round.id !== p.round.id).concat([p]); store('golf.pending', pending); }
   detailId = cur.id; cur = null; localStorage.removeItem('golf.cur'); view = 'detail';
-  flush().then(() => { notice = ''; }, e => { notice = e.message === 'key' ? '비밀키가 맞지 않습니다. 다시 보내기를 눌러 입력해 주세요.' : ''; }).then(render);
+  flush().then(() => { notice = ''; }, e => { notice = e.message === 'key' ? KEY_MSG : e.message; }).then(render);
 }
 
 // ---------- 이벤트 ----------
