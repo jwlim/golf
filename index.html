@@ -253,7 +253,7 @@ function chart(title, vals, unit) {
 function avgRow(label, rs) {
   if (!rs.length) return `<tr><th>${label}</th><td>0</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`;
   const sum = k => rs.reduce((a, r) => a + r.s[k], 0);
-  return `<tr><th>${label}</th><td>${rs.length}</td><td>${(sum('strokes') / rs.length).toFixed(1)}</td><td>${(sum('putts') / rs.length).toFixed(1)}</td>
+  return `<tr><th>${label}</th><td>${rs.length}</td><td>${(sum('strokes') / rs.length).toFixed(1)}</td><td>${(sum('putts') / sum('n')).toFixed(2)}</td>
     <td>${showPct(pct(sum('fwHit'), sum('fwN')))}</td><td>${showPct(pct(sum('gir'), sum('n')))}</td></tr>`;
 }
 function homeView() {
@@ -275,12 +275,12 @@ function homeView() {
   const year = today().slice(0, 4);
   const pick = (list, k) => k === 'r10' ? list.slice(0, 10) : k === 'year' ? list.filter(r => r.date.slice(0, 4) === year) : list;
   const RANGES = [['r10', '최근 10'], ['year', `올해(${year})`], ['all', '전체']];
-  h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>라운드</th><th>스코어</th><th>퍼트</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`
+  h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>라운드</th><th>스코어</th><th>퍼트/홀</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`
     + RANGES.map(([k, t]) => avgRow(t, pick(full, k))).join('') + `</tbody></table></section>`;
   h += `<div class="seg tabs">` + RANGES.map(([k, t]) => `<button data-act="range" data-v="${k}" class="${range === k ? 'on' : ''}">${t}</button>`).join('') + `</div>`;
 
   const t = pick(full, range).slice().reverse();
-  const charts = chart('스코어', t.map(r => r.s.strokes), '') + chart('퍼트', t.map(r => r.s.putts), '')
+  const charts = chart('스코어', t.map(r => r.s.strokes), '') + chart('퍼트/홀', t.map(r => +(r.s.putts / r.s.n).toFixed(2)), '')
     + chart('페어웨이', t.map(r => pct(r.s.fwHit, r.s.fwN)), '%') + chart('GIR', t.map(r => pct(r.s.gir, r.s.n)), '%');
   h += `<section class="card"><h2>추이 (18홀 ${t.length}라운드)</h2>` + (charts ? `<div class="charts">${charts}</div>` : `<span class="muted">이 기간에 18홀 라운드가 2개 이상 있어야 추이를 그립니다.</span>`) + `</section>`;
 
