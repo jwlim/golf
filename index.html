@@ -449,6 +449,7 @@ function finish() {
   store('golf.db', db);
   if (API_URL) { pending = pending.filter(x => x.round.id !== p.round.id).concat([p]); store('golf.pending', pending); }
   detailId = cur.id; cur = null; localStorage.removeItem('golf.cur'); view = 'detail';
+  render();   // 시트 전송을 기다리지 않고 바로 화면을 바꿉니다(저장 버튼이 남아 두 번 눌리지 않게).
   flush().then(() => { notice = ''; }, e => { notice = e.message === 'key' ? KEY_MSG : e.message; }).then(render);
 }
 
@@ -460,6 +461,7 @@ app.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const a = b.dataset.act, v = b.dataset.v;
+  if (!cur && ['par', 'inc', 'dec', 'fw', 'goto', 'prev', 'next', 'finish', 'abandon'].includes(a)) return;
   if (a === 'home') view = 'home';
   else if (a === 'new') { nf = { date: today(), club: '', front: '', back: '' }; view = 'new'; }
   else if (a === 'resume') view = 'play';
