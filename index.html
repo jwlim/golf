@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>골프 기록</title>
+<style>
+/* 폰 세로 한 열. 입력 화면은 엄지로 누르는 큰 버튼, 기록 화면은 표와 작은 추이 그래프. */
+:root {
+  --bg: #f2f5f0; --surface: #ffffff; --ink: #17201a; --muted: #617066;
+  --line: #d8dfd6; --accent: #1f6b45; --accent-ink: #ffffff; --warn: #a94f16;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1411; --surface: #19201b; --ink: #e6ece7; --muted: #93a197;
+    --line: #2b352e; --accent: #5cc08a; --accent-ink: #0c130f; --warn: #e89c5e;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+main { max-width: 520px; margin: 0 auto; padding: 16px 16px 48px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.muted { color: var(--muted); font-size: 14px; }
+.note { border-color: var(--warn); color: var(--warn); font-size: 14px; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px 14px; touch-action: manipulation; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.wide { width: 100%; padding: 14px; font-size: 17px; }
+button.link { border: 0; background: none; color: var(--muted); padding: 8px 0; text-decoration: underline; }
+button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+tr:last-child > * { border-bottom: 0; }
+thead th { color: var(--muted); font-weight: 500; }
+
+.rounds { display: flex; flex-direction: column; }
+.rounds button { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 0; background: none; }
+.rounds button:last-child { border-bottom: 0; }
+.rounds .score { grid-row: span 2; align-self: center; font-size: 24px; font-weight: 700; }
+.rounds small { color: var(--muted); }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+figure { margin: 0; }
+figcaption { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; }
+figcaption b { color: var(--ink); }
+svg { display: block; width: 100%; height: auto; }
+svg polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg circle { fill: var(--accent); }
+svg line { stroke: var(--line); }
+.range { font-size: 12px; color: var(--muted); }
+
+/* 새 라운드 */
+form { display: flex; flex-direction: column; gap: 14px; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+input { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 17px; color: var(--ink); width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { padding: 6px 12px; font-size: 14px; border-radius: 999px; }
+
+/* 홀 입력 */
+.strip { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.strip button { padding: 6px 0; font-size: 13px; border-radius: 6px; color: var(--muted); }
+.strip button.done { color: var(--ink); font-weight: 600; }
+.strip button.cur { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
+.holehead { display: flex; align-items: baseline; justify-content: space-between; }
+.holehead .no { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.holehead .run { text-align: right; }
+.row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row > span { color: var(--muted); font-size: 14px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.seg button { padding: 14px 0; font-size: 17px; }
+.step { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 8px; }
+.step button { height: 56px; font-size: 26px; padding: 0; }
+.step output { text-align: center; font-size: 30px; font-weight: 700; }
+.step output small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.tabs button { padding: 10px 0; font-size: 15px; }
+.nav { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+
+/* 스코어카드: 버디는 원, 이글은 겹원, 보기는 네모, 더블 이상은 겹네모 */
+.cardwrap { overflow-x: auto; }
+.sc th, .sc td { text-align: center; padding: 6px 2px; min-width: 26px; }
+.sc th:first-child, .sc td:first-child { text-align: left; color: var(--muted); font-weight: 500; min-width: 40px; }
+.mk { display: inline-block; min-width: 24px; line-height: 22px; border: 1px solid transparent; }
+.mk.birdie, .mk.eagle { border-color: var(--accent); border-radius: 50%; }
+.mk.eagle { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--accent); }
+.mk.bogey, .mk.double { border-color: var(--ink); }
+.mk.double { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink); }
+.totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+.totals b { display: block; font-size: 22px; }
+.totals span { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+// Apps Script 웹 앱 URL(…/exec). 비워 두면 기록이 이 기기에만 저장됩니다.
+const API_URL = '';
+
+const app = document.getElementById('app');
+const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+
+let db = load('golf.db') || { courses: [], rounds: [], holes: [] };
+let pending = load('golf.pending') || [];   // 시트로 아직 못 보낸 라운드
+let cur = load('golf.cur');                 // 진행 중인 라운드
+let view = 'home', tab = 'rounds', detailId = null, nf = null, notice = '';
+
+// ---------- 데이터 ----------
+function norm(d) {
+  return {
+    courses: d.courses.map(c => ({ club: String(c.club), course: String(c.course), pars: [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => Number(c['p' + i])) })),
+    rounds: d.rounds.map(r => ({ id: String(r.id), date: String(r.date), club: String(r.club), front: String(r.front), back: String(r.back) })),
+    holes: d.holes.map(h => ({ round_id: String(h.round_id), hole: +h.hole, par: +h.par, strokes: +h.strokes, putts: +h.putts, fairway: String(h.fairway || ''), penalty: +h.penalty || 0 })),
+  };
+}
+function apply(d, p) {
+  d.rounds = d.rounds.filter(r => r.id !== p.round.id).concat([p.round]);
+  d.holes = d.holes.filter(h => h.round_id !== p.round.id).concat(p.holes);
+  for (const c of p.courses) d.courses = d.courses.filter(x => !(x.club === c.club && x.course === c.course)).concat([c]);
+}
+function coursePars(club, course) {
+  const c = db.courses.find(x => x.club === club && x.course === course);
+  return c ? c.pars : null;
+}
+async function flush() {
+  if (!API_URL || !pending.length) return;
+  let key = localStorage.getItem('golf.key');
+  if (!key) {
+    key = prompt('시트 저장용 비밀키를 입력하세요');
+    if (!key) throw new Error('key');
+    localStorage.setItem('golf.key', key);
+  }
+  while (pending.length) {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ key }, pending[0])) }).then(r => r.json());
+    if (!res.ok) { if (res.error === 'key') localStorage.removeItem('golf.key'); throw new Error(res.error); }
+    pending.shift();
+    store('golf.pending', pending);
+  }
+}
+async function sync() {
+  if (!API_URL) return;
+  try {
+    await flush();
+    db = norm(await fetch(API_URL).then(r => r.json()));
+    store('golf.db', db);
+    notice = '';
+  } catch (e) {
+    notice = e.message === 'key' ? '비밀키가 맞지 않습니다. 다시 보내기를 눌러 입력해 주세요.' : '시트와 연결하지 못했습니다. 이 기기에 저장된 기록을 보여줍니다.';
+  }
+  if (view === 'home' || view === 'detail') render();
+}
+
+// ---------- 통계 ----------
+function stat(hs) {
+  const s = { n: hs.length, strokes: 0, par: 0, putts: 0, fwN: 0, fwHit: 0, gir: 0, pen: 0 };
+  for (const h of hs) {
+    s.strokes += h.strokes; s.par += h.par; s.putts += h.putts; s.pen += h.penalty;
+    if (h.par > 3 && h.fairway) { s.fwN++; if (h.fairway === 'hit') s.fwHit++; }
+    if (h.strokes - h.putts <= h.par - 2) s.gir++;
+  }
+  return s;
+}
+const pct = (a, b) => b ? Math.round(100 * a / b) : null;
+const showPct = v => v == null ? '–' : v + '%';
+const signed = n => n === 0 ? 'E' : (n > 0 ? '+' : '') + n;
+function roundsWithStats() {
+  return db.rounds.map(r => {
+    const hs = db.holes.filter(h => h.round_id === r.id).sort((a, b) => a.hole - b.hole);
+    return Object.assign({ hs, s: stat(hs) }, r);
+  }).sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
+}
+function mark(h) {
+  const d = h.strokes - h.par;
+  return d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 0 ? '' : d === 1 ? 'bogey' : 'double';
+}
+const RESULT = { '-3': '알바트로스', '-2': '이글', '-1': '버디', '0': '파', '1': '보기', '2': '더블보기', '3': '트리플보기' };
+
+// ---------- 화면: 기록 ----------
+function chart(title, vals, unit) {
+  vals = vals.filter(v => v != null);
+  if (vals.length < 2) return '';
+  const W = 160, H = 60, p = 6;
+  let lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const x = i => p + i * (W - 2 * p) / (vals.length - 1);
+  const y = v => p + (hi - v) * (H - 2 * p) / (hi - lo);
+  const pts = vals.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+  const last = vals[vals.length - 1];
+  return `<figure><figcaption>${title}<b>${last}${unit}</b></figcaption>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${title} 추이">
+      <line x1="0" y1="${H - 1}" x2="${W}" y2="${H - 1}"/>
+      <polyline points="${pts}"/><circle cx="${x(vals.length - 1)}" cy="${y(last)}" r="3.5"/>
+    </svg><span class="range">최저 ${Math.min.apply(null, vals)}${unit} · 최고 ${Math.max.apply(null, vals)}${unit}</span></figure>`;
+}
+function avgRow(label, rs) {
+  const sum = k => rs.reduce((a, r) => a + r.s[k], 0);
+  return `<tr><th>${label}</th><td>${(sum('strokes') / rs.length).toFixed(1)}</td><td>${(sum('putts') / rs.length).toFixed(1)}</td>
+    <td>${showPct(pct(sum('fwHit'), sum('fwN')))}</td><td>${showPct(pct(sum('gir'), sum('n')))}</td></tr>`;
+}
+function homeView() {
+  const rs = roundsWithStats();
+  const full = rs.filter(r => r.s.n === 18);
+  let h = `<div class="top"><h1>골프 기록</h1>
+    <button class="primary" data-act="${cur ? 'resume' : 'new'}">${cur ? '라운드 이어하기' : '새 라운드'}</button></div>`;
+  if (notice || pending.length) h += `<div class="card note"><span>${notice || `시트로 보내지 못한 라운드가 ${pending.length}건 있습니다.`}</span><button data-act="sync">다시 보내기</button></div>`;
+  if (!API_URL) h += `<p class="muted">시트가 연결되지 않아 기록이 이 기기에만 저장됩니다.</p>`;
+  if (!rs.length) return h + `<div class="card muted">아직 기록이 없습니다. 새 라운드를 눌러 첫 라운드를 입력하세요.</div>`;
+  h += `<div class="seg tabs"><button data-act="tab" data-v="rounds" class="${tab === 'rounds' ? 'on' : ''}">라운드</button><button data-act="tab" data-v="stats" class="${tab === 'stats' ? 'on' : ''}">통계</button></div>`;
+  if (tab === 'rounds') return h + `<section class="card"><div class="rounds">` + rs.map(r => `<button data-act="detail" data-id="${esc(r.id)}">
+      <span>${esc(r.club)} <small>${esc(r.front)}/${esc(r.back)}</small></span>
+      <span class="score">${r.s.strokes}</span>
+      <small>${esc(r.date)}${r.s.n < 18 ? ` · ${r.s.n}홀` : ''} · ${signed(r.s.strokes - r.s.par)} · 퍼트 ${r.s.putts}</small>
+    </button>`).join('') + `</div></section>`;
+
+  if (full.length) {
+    h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>스코어</th><th>퍼트</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`;
+    if (full.length > 5) h += avgRow('최근 5', full.slice(0, 5));
+    if (full.length > 10) h += avgRow('최근 10', full.slice(0, 10));
+    h += avgRow(`전체 ${full.length}`, full) + `</tbody></table></section>`;
+    const t = full.slice(0, 20).reverse();
+    const charts = chart('스코어', t.map(r => r.s.strokes), '') + chart('퍼트', t.map(r => r.s.putts), '')
+      + chart('페어웨이', t.map(r => pct(r.s.fwHit, r.s.fwN)), '%') + chart('GIR', t.map(r => pct(r.s.gir, r.s.n)), '%');
+    if (charts) h += `<section class="card"><h2>추이 (최근 ${t.length}라운드)</h2><div class="charts">${charts}</div></section>`;
+  }
+
+  let rows = '';
+  for (const p of [3, 4, 5]) {
+    const d = db.holes.filter(x => x.par === p).map(x => x.strokes - p);
+    if (!d.length) continue;
+    const share = f => pct(d.filter(f).length, d.length) + '%';
+    rows += `<tr><th>파${p}</th><td>${(d.reduce((a, b) => a + b, 0) / d.length + p).toFixed(2)}</td>
+      <td>${share(v => v < 0)}</td><td>${share(v => v === 0)}</td><td>${share(v => v === 1)}</td><td>${share(v => v > 1)}</td></tr>`;
+  }
+  h += `<section class="card"><h2>파별 성적 (전체 홀)</h2><table><thead><tr><th></th><th>평균</th><th>버디↓</th><th>파</th><th>보기</th><th>더블↑</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+
+  return h;
+}
+function cardTable(hs, label) {
+  if (!hs.length) return '';
+  const row = (name, f, total) => `<tr><td>${name}</td>${hs.map(h => `<td>${f(h)}</td>`).join('')}<td><b>${total}</b></td></tr>`;
+  const s = stat(hs);
+  const fw = { hit: '●', left: '←', right: '→', '': '' };
+  return `<div class="cardwrap"><table class="sc">
+    <thead><tr><th>${esc(label)}</th>${hs.map(h => `<th>${h.hole}</th>`).join('')}<th>계</th></tr></thead><tbody>
+    ${row('파', h => h.par, s.par)}
+    ${row('타수', h => `<span class="mk ${mark(h)}">${h.strokes}</span>`, s.strokes)}
+    ${row('퍼트', h => h.putts, s.putts)}
+    ${row('FW', h => fw[h.fairway] || '', s.fwN ? s.fwHit + '/' + s.fwN : '')}
+    ${row('벌타', h => h.penalty || '', s.pen || '')}
+    </tbody></table></div>`;
+}
+function detailView() {
+  const r = roundsWithStats().find(x => x.id === detailId);
+  if (!r) { view = 'home'; return homeView(); }
+  const s = r.s;
+  return `<div class="top"><button data-act="home">← 기록</button><span class="muted">${esc(r.date)}</span></div>
+    <h1>${esc(r.club)}</h1>
+    <div class="card totals">
+      <div><b>${s.strokes}</b><span>스코어 ${signed(s.strokes - s.par)}</span></div>
+      <div><b>${s.putts}</b><span>퍼트</span></div>
+      <div><b>${showPct(pct(s.fwHit, s.fwN))}</b><span>페어웨이</span></div>
+      <div><b>${showPct(pct(s.gir, s.n))}</b><span>GIR</span></div>
+    </div>
+    <div class="card">${cardTable(r.hs.filter(h => h.hole <= 9), r.front)}</div>
+    <div class="card">${cardTable(r.hs.filter(h => h.hole > 9), r.back)}</div>`;
+}
+
+// ---------- 화면: 새 라운드 ----------
+function chipsHtml(field, values) {
+  return values.map(v => `<button type="button" data-act="chip" data-f="${field}" data-v="${esc(v)}" class="${nf[field] === v ? 'on' : ''}">${esc(v)}</button>`).join('');
+}
+function courseChips(field) {
+  return chipsHtml(field, db.courses.filter(c => c.club === nf.club.trim()).map(c => c.course));
+}
+function newView() {
+  const clubs = Array.from(new Set(db.rounds.slice().reverse().map(r => r.club).concat(db.courses.map(c => c.club))));
+  return `<div class="top"><button data-act="home">← 취소</button><h1>새 라운드</h1></div>
+    <form class="card" id="newform">
+      <label>날짜<input id="f-date" type="date" data-f="date" value="${esc(nf.date)}"></label>
+      <label>골프장<input id="f-club" data-f="club" value="${esc(nf.club)}" placeholder="골프장 이름" autocomplete="off">
+        <div class="chips">${chipsHtml('club', clubs)}</div></label>
+      <label>전반 코스<input id="f-front" data-f="front" value="${esc(nf.front)}" placeholder="예: 동 (비우면 OUT)" autocomplete="off">
+        <div class="chips" id="chips-front">${courseChips('front')}</div></label>
+      <label>후반 코스<input id="f-back" data-f="back" value="${esc(nf.back)}" placeholder="예: 서 (비우면 IN)" autocomplete="off">
+        <div class="chips" id="chips-back">${courseChips('back')}</div></label>
+      <button class="primary wide" type="submit">시작</button>
+      <p class="muted">처음 가는 코스는 홀마다 파를 함께 입력하면 다음부터 자동으로 채워집니다.</p>
+    </form>`;
+}
+function startRound() {
+  const club = nf.club.trim(), front = nf.front.trim() || 'OUT', back = nf.back.trim() || 'IN';
+  if (!club) { document.getElementById('f-club').focus(); return; }
+  const holes = [];
+  for (let i = 0; i < 18; i++) {
+    const pars = coursePars(club, i < 9 ? front : back);
+    const par = pars ? pars[i % 9] : 4;
+    holes.push({ par, strokes: par, putts: 2, fairway: '', penalty: 0, done: false, touched: false });
+  }
+  cur = { id: 'r' + Date.now(), date: nf.date || today(), club, front, back, i: 0, holes };
+  store('golf.cur', cur);
+  view = 'play';
+}
+
+// ---------- 화면: 홀 입력 ----------
+function playView() {
+  const i = cur.i, h = cur.holes[i], nine = i < 9 ? cur.front : cur.back;
+  const done = cur.holes.filter(x => x.done);
+  const ds = stat(done);
+  const d = h.strokes - h.par;
+  const seg = (act, items, val) => `<div class="seg">${items.map(([v, t]) => `<button data-act="${act}" data-v="${v}" class="${String(val) === String(v) ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const step = (k, sub) => `<div class="step"><button data-act="dec" data-k="${k}" aria-label="줄이기">−</button>
+    <output>${h[k]}${sub ? `<small>${sub}</small>` : ''}</output><button data-act="inc" data-k="${k}" aria-label="늘리기">+</button></div>`;
+  return `<div class="top"><button data-act="home">← 기록</button><span class="muted">${esc(cur.club)} · ${esc(cur.date)}</span></div>
+    <div class="strip">${cur.holes.map((x, k) => `<button data-act="goto" data-v="${k}" class="${k === i ? 'cur' : ''} ${x.done ? 'done' : ''}">${x.done ? x.strokes : k + 1}</button>`).join('')}</div>
+    <div class="card">
+      <div class="holehead">
+        <div><div class="muted">${esc(nine)} 코스</div><div class="no">${i + 1}번 홀</div></div>
+        <div class="run muted">${done.length ? `${done.length}홀 ${ds.strokes}타 (${signed(ds.strokes - ds.par)})` : ''}</div>
+      </div>
+      <div class="row"><span>파</span>${seg('par', [[3, '3'], [4, '4'], [5, '5']], h.par)}</div>
+      <div class="row"><span>타수</span>${step('strokes', (RESULT[d] || signed(d)))}</div>
+      <div class="row"><span>퍼트</span>${step('putts')}</div>
+      ${h.par > 3 ? `<div class="row"><span>페어웨이</span>${seg('fw', [['left', '← 좌'], ['hit', '안착'], ['right', '우 →']], h.fairway)}</div>` : ''}
+      <div class="row"><span>벌타</span>${step('penalty')}</div>
+    </div>
+    <div class="nav"><button data-act="prev" ${i === 0 ? 'disabled' : ''}>이전</button>
+      ${i < 17 ? `<button class="primary" data-act="next">다음 홀</button>` : `<button class="primary" data-act="finish">라운드 저장</button>`}</div>
+    <div class="top">${i < 17 ? `<button class="link" data-act="finish">이 홀까지 저장하고 종료</button>` : '<span></span>'}
+      <button class="link" data-act="abandon">라운드 버리기</button></div>`;
+}
+function setPar(p) {
+  const i = cur.i, h = cur.holes[i], nine = i < 9 ? cur.front : cur.back;
+  if (p === h.par) return;
+  const saved = coursePars(cur.club, nine);
+  if (saved && p !== saved[i % 9] && !confirm(`${nine} 코스 ${i % 9 + 1}번째 홀은 파 ${saved[i % 9]}로 저장되어 있습니다.\n파 ${p}로 바꿀까요? 라운드를 저장하면 코스 정보도 바뀝니다.`)) return;
+  h.par = p;
+  if (!h.touched) h.strokes = p;
+  if (p === 3) h.fairway = '';
+}
+function bump(k, d) {
+  const h = cur.holes[cur.i];
+  h[k] = Math.max(k === 'strokes' ? 1 : 0, h[k] + d);
+  if (k === 'strokes') h.touched = true;
+  h.putts = Math.min(h.putts, h.strokes);
+}
+function finish() {
+  cur.holes[cur.i].done = true;
+  const n = cur.holes.filter(h => h.done).length;
+  if (n < 18 && !confirm(`${n}개 홀만 입력했습니다. 여기까지 저장하고 라운드를 마칠까요?`)) return;
+  const courses = [];
+  [[cur.front, 0], [cur.back, 9]].forEach(([name, off]) => {
+    const saved = coursePars(cur.club, name);
+    const pars = [];
+    for (let k = 0; k < 9; k++) { const h = cur.holes[off + k]; pars.push(h.done ? h.par : saved ? saved[k] : null); }
+    if (pars.includes(null)) return;                    // 9홀을 다 알지 못하면 코스로 저장하지 않음
+    if (saved && saved.every((p, k) => p === pars[k])) return;
+    const at = courses.findIndex(c => c.course === name);
+    if (at >= 0) courses.splice(at, 1);
+    courses.push({ club: cur.club, course: name, pars });
+  });
+  const p = {
+    round: { id: cur.id, date: cur.date, club: cur.club, front: cur.front, back: cur.back },
+    holes: cur.holes.map((h, k) => ({ round_id: cur.id, hole: k + 1, par: h.par, strokes: h.strokes, putts: h.putts, fairway: h.par > 3 ? h.fairway : '', penalty: h.penalty, done: h.done }))
+      .filter(h => h.done).map(h => { delete h.done; return h; }),
+    courses,
+  };
+  apply(db, p);
+  store('golf.db', db);
+  if (API_URL) { pending.push(p); store('golf.pending', pending); }
+  detailId = cur.id; cur = null; localStorage.removeItem('golf.cur'); view = 'detail';
+  flush().then(() => { notice = ''; }, e => { notice = e.message === 'key' ? '비밀키가 맞지 않습니다. 다시 보내기를 눌러 입력해 주세요.' : ''; }).then(render);
+}
+
+// ---------- 이벤트 ----------
+function render() {
+  app.innerHTML = view === 'play' && cur ? playView() : view === 'new' ? newView() : view === 'detail' ? detailView() : homeView();
+}
+app.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const a = b.dataset.act, v = b.dataset.v;
+  if (a === 'home') view = 'home';
+  else if (a === 'new') { nf = { date: today(), club: '', front: '', back: '' }; view = 'new'; }
+  else if (a === 'resume') view = 'play';
+  else if (a === 'tab') tab = v;
+  else if (a === 'detail') { detailId = b.dataset.id; view = 'detail'; }
+  else if (a === 'sync') { sync(); return; }
+  else if (a === 'chip') { nf[b.dataset.f] = v; if (b.dataset.f === 'club') { nf.front = ''; nf.back = ''; } }
+  else if (a === 'par') setPar(+v);
+  else if (a === 'inc') bump(b.dataset.k, 1);
+  else if (a === 'dec') bump(b.dataset.k, -1);
+  else if (a === 'fw') { const h = cur.holes[cur.i]; h.fairway = h.fairway === v ? '' : v; }
+  else if (a === 'goto') cur.i = +v;
+  else if (a === 'prev') cur.i--;
+  else if (a === 'next') { cur.holes[cur.i].done = true; cur.i++; }
+  else if (a === 'finish') { finish(); if (cur) { store('golf.cur', cur); render(); } return; }
+  else if (a === 'abandon') { if (!confirm('입력 중인 라운드를 저장하지 않고 버릴까요?')) return; cur = null; localStorage.removeItem('golf.cur'); view = 'home'; }
+  if (cur) store('golf.cur', cur);
+  render();
+  if (a === 'next' || a === 'prev' || a === 'goto') window.scrollTo(0, 0);
+});
+app.addEventListener('input', e => {
+  const f = e.target.dataset.f;
+  if (!f || !nf) return;
+  nf[f] = e.target.value;
+  if (f === 'club') { document.getElementById('chips-front').innerHTML = courseChips('front'); document.getElementById('chips-back').innerHTML = courseChips('back'); }
+});
+app.addEventListener('submit', e => { e.preventDefault(); startRound(); render(); });
+
+render();
+sync();
+</script>
+</body>
+</html>
