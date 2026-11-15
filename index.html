@@ -110,7 +110,7 @@ input { background: var(--surface); border: 1px solid var(--line); border-radius
 <main id="app"></main>
 <script>
 // Apps Script 웹 앱 URL(…/exec). 비워 두면 기록이 이 기기에만 저장됩니다.
-const API_URL = '';
+const API_URL = 'https://script.google.com/macros/s/AKfycbys9LBp_YuEDzpujONvqgbS7bYybHGuZo040fyhI9fyFF-EMien5wzFwi_l1c3whyPxWw/exec';
 
 const app = document.getElementById('app');
 const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
