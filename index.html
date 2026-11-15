@@ -140,18 +140,21 @@ const app = document.getElementById('app');
 const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const ymd = d => new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const today = () => ymd(new Date());
+// 시트가 날짜를 ISO 시각(2026-11-08T15:00:00.000Z)으로 돌려줘도 이 기기 시간대의 날짜로 읽습니다.
+const dateOnly = s => /T/.test(s) ? ymd(new Date(s)) : s;
 
 let db = load('golf.db') || { courses: [], rounds: [], holes: [] };
 let pending = load('golf.pending') || [];   // 시트로 아직 못 보낸 라운드
 let cur = load('golf.cur');                 // 진행 중인 라운드
-let view = 'home', tab = 'rounds', detailId = null, nf = null, notice = '';
+let view = 'home', tab = 'rounds', range = 'r10', detailId = null, nf = null, notice = '';
 
 // ---------- 데이터 ----------
 function norm(d) {
   return {
     courses: d.courses.map(c => ({ club: String(c.club), course: String(c.course), pars: [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => Number(c['p' + i])) })),
-    rounds: d.rounds.map(r => ({ id: String(r.id), date: String(r.date), club: String(r.club), front: String(r.front), back: String(r.back) })),
+    rounds: d.rounds.map(r => ({ id: String(r.id), date: dateOnly(String(r.date)), club: String(r.club), front: String(r.front), back: String(r.back) })),
     holes: d.holes.map(h => ({ round_id: String(h.round_id), hole: +h.hole, par: +h.par, strokes: +h.strokes, putts: +h.putts, fairway: String(h.fairway || ''), penalty: +h.penalty || 0 })),
   };
 }
@@ -248,8 +251,9 @@ function chart(title, vals, unit) {
     </svg><span class="range">최저 ${Math.min.apply(null, vals)}${unit} · 최고 ${Math.max.apply(null, vals)}${unit}</span></figure>`;
 }
 function avgRow(label, rs) {
+  if (!rs.length) return `<tr><th>${label}</th><td>0</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`;
   const sum = k => rs.reduce((a, r) => a + r.s[k], 0);
-  return `<tr><th>${label}</th><td>${(sum('strokes') / rs.length).toFixed(1)}</td><td>${(sum('putts') / rs.length).toFixed(1)}</td>
+  return `<tr><th>${label}</th><td>${rs.length}</td><td>${(sum('strokes') / rs.length).toFixed(1)}</td><td>${(sum('putts') / rs.length).toFixed(1)}</td>
     <td>${showPct(pct(sum('fwHit'), sum('fwN')))}</td><td>${showPct(pct(sum('gir'), sum('n')))}</td></tr>`;
 }
 function homeView() {
@@ -267,27 +271,30 @@ function homeView() {
       <small>${esc(r.date)}${r.s.n < 18 ? ` · ${r.s.n}홀` : ''} · ${signed(r.s.strokes - r.s.par)} · 퍼트 ${r.s.putts}</small>
     </button>`).join('') + `</div></section>`;
 
-  if (full.length) {
-    h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>스코어</th><th>퍼트</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`;
-    if (full.length > 5) h += avgRow('최근 5', full.slice(0, 5));
-    if (full.length > 10) h += avgRow('최근 10', full.slice(0, 10));
-    h += avgRow(`전체 ${full.length}`, full) + `</tbody></table></section>`;
-    const t = full.slice(0, 20).reverse();
-    const charts = chart('스코어', t.map(r => r.s.strokes), '') + chart('퍼트', t.map(r => r.s.putts), '')
-      + chart('페어웨이', t.map(r => pct(r.s.fwHit, r.s.fwN)), '%') + chart('GIR', t.map(r => pct(r.s.gir, r.s.n)), '%');
-    if (charts) h += `<section class="card"><h2>추이 (최근 ${t.length}라운드)</h2><div class="charts">${charts}</div></section>`;
-  }
+  // 기간: 최근 10라운드 / 올해 / 전체. 위 표는 세 기간을 나란히, 아래 추이와 파별 성적은 고른 기간만.
+  const year = today().slice(0, 4);
+  const pick = (list, k) => k === 'r10' ? list.slice(0, 10) : k === 'year' ? list.filter(r => r.date.slice(0, 4) === year) : list;
+  const RANGES = [['r10', '최근 10'], ['year', `올해(${year})`], ['all', '전체']];
+  h += `<section class="card"><h2>평균 (18홀 라운드)</h2><table><thead><tr><th></th><th>라운드</th><th>스코어</th><th>퍼트</th><th>페어웨이</th><th>GIR</th></tr></thead><tbody>`
+    + RANGES.map(([k, t]) => avgRow(t, pick(full, k))).join('') + `</tbody></table></section>`;
+  h += `<div class="seg tabs">` + RANGES.map(([k, t]) => `<button data-act="range" data-v="${k}" class="${range === k ? 'on' : ''}">${t}</button>`).join('') + `</div>`;
 
+  const t = pick(full, range).slice().reverse();
+  const charts = chart('스코어', t.map(r => r.s.strokes), '') + chart('퍼트', t.map(r => r.s.putts), '')
+    + chart('페어웨이', t.map(r => pct(r.s.fwHit, r.s.fwN)), '%') + chart('GIR', t.map(r => pct(r.s.gir, r.s.n)), '%');
+  h += `<section class="card"><h2>추이 (18홀 ${t.length}라운드)</h2>` + (charts ? `<div class="charts">${charts}</div>` : `<span class="muted">이 기간에 18홀 라운드가 2개 이상 있어야 추이를 그립니다.</span>`) + `</section>`;
+
+  const ids = new Set(pick(rs, range).map(r => r.id));
+  const holes = db.holes.filter(x => ids.has(x.round_id));
   let rows = '';
   for (const p of [3, 4, 5]) {
-    const d = db.holes.filter(x => x.par === p).map(x => x.strokes - p);
+    const d = holes.filter(x => x.par === p).map(x => x.strokes - p);
     if (!d.length) continue;
     const share = f => pct(d.filter(f).length, d.length) + '%';
     rows += `<tr><th>파${p}</th><td>${(d.reduce((a, b) => a + b, 0) / d.length + p).toFixed(2)}</td>
       <td>${share(v => v < 0)}</td><td>${share(v => v === 0)}</td><td>${share(v => v === 1)}</td><td>${share(v => v > 1)}</td></tr>`;
   }
-  h += `<section class="card"><h2>파별 성적 (전체 홀)</h2><table><thead><tr><th></th><th>평균</th><th>버디↓</th><th>파</th><th>보기</th><th>더블↑</th></tr></thead><tbody>${rows}</tbody></table></section>`;
-
+  h += `<section class="card"><h2>파별 성적 (${ids.size}라운드, ${holes.length}홀)</h2>` + (rows ? `<table><thead><tr><th></th><th>평균</th><th>버디↓</th><th>파</th><th>보기</th><th>더블↑</th></tr></thead><tbody>${rows}</tbody></table>` : `<span class="muted">이 기간에 기록이 없습니다.</span>`) + `</section>`;
   return h;
 }
 function cardTable(hs, label) {
@@ -457,6 +464,7 @@ app.addEventListener('click', e => {
   else if (a === 'new') { nf = { date: today(), club: '', front: '', back: '' }; view = 'new'; }
   else if (a === 'resume') view = 'play';
   else if (a === 'tab') tab = v;
+  else if (a === 'range') range = v;
   else if (a === 'detail') { detailId = b.dataset.id; view = 'detail'; }
   else if (a === 'edit') editRound(b.dataset.id);
   else if (a === 'sync') { sync(); return; }
